@@ -1,0 +1,9 @@
+# ADK (Agent Development Kit) および Google GenAI SDK (Gemini Enterprise Agent Platform（旧称 Vertex AI） 対応)
+google-adk>=2.6.0
+google-genai>=2.17.0
+google-agents-cli>=1.3.0
+google-auth>=2.0.0
+
+# ユーティリティ・環境変数管理
+python-dotenv>=1.0.0
+pydantic>=2.0.0

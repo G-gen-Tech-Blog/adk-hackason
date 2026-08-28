@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# 環境変数
+.env
+
+# ADK キャッシュ・ストレージ
+.adk/
+
+# IDE / エディタ
+.vscode/
+.idea/
+*.swp
+*.swo
