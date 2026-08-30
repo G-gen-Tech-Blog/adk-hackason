@@ -25,6 +25,7 @@ import os
 from dotenv import load_dotenv
 from google.adk.agents import LlmAgent
 from google.adk.agents.context import Context
+from google.adk.models import Gemini
 from google.adk.workflow import FunctionNode, JoinNode, START, Workflow
 
 from .prompts import (
@@ -38,16 +39,27 @@ from .prompts import (
 )
 from .tools import get_customer_info, search_knowledge_base
 
-# .env ファイルから環境変数を読み込み
-load_dotenv()
+# .env ファイルから環境変数を読み込み（override=True でコンテナ内環境変数を上書き可能にする）
+load_dotenv(override=True)
 
 # Gemini Enterprise Agent Platform（旧称 Vertex AI） バックエンドの有効化（デフォルトで Agent Platform を使用）
-# 明示的に無効化されていない場合は Agent Platform をデフォルトとして有効化
 if os.getenv("GOOGLE_GENAI_USE_VERTEXAI") is None and os.getenv("GOOGLE_GENAI_USE_ENTERPRISE") is None:
     os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "1"
 
 # 使用する Gemini モデル（デフォルト: gemini-3.7-flash）
 MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
+
+# モデル呼び出しのエンドポイントロケーション
+# Agent Runtime は us-central1 などの実リージョンにデプロイされますが、
+# gemini-3.7-flash 等のモデル推論は global エンドポイントを指定します。
+MODEL_LOCATION = os.getenv("GEMINI_LOCATION", "global")
+os.environ["GOOGLE_CLOUD_LOCATION"] = MODEL_LOCATION
+
+# global エンドポイントを明示指定した Gemini モデルインスタンス
+gemini_model = Gemini(
+    model=MODEL_NAME,
+    client_kwargs={"location": MODEL_LOCATION},
+)
 
 # ==============================================================================
 # 1. 各専門エージェントの定義 (LlmAgent)
@@ -56,7 +68,7 @@ MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
 # Step 1: トリアージエージェント
 triage_agent = LlmAgent(
     name="triage_agent",
-    model=MODEL_NAME,
+    model=gemini_model,
     instruction=TRIAGE_INSTRUCTION,
     output_key="triage_result",
     description="顧客からの問い合わせ内容を分析し、カテゴリ分類と緊急度を判定するエージェント",
@@ -65,7 +77,7 @@ triage_agent = LlmAgent(
 # Step 2-A: ナレッジ検索エージェント (Tool: search_knowledge_base)
 knowledge_search_agent = LlmAgent(
     name="knowledge_search_agent",
-    model=MODEL_NAME,
+    model=gemini_model,
     instruction=KNOWLEDGE_INSTRUCTION,
     tools=[search_knowledge_base],
     output_key="knowledge_result",
@@ -75,7 +87,7 @@ knowledge_search_agent = LlmAgent(
 # Step 2-B: 顧客情報・契約照会エージェント (Tool: get_customer_info)
 customer_info_agent = LlmAgent(
     name="customer_info_agent",
-    model=MODEL_NAME,
+    model=gemini_model,
     instruction=CUSTOMER_INSTRUCTION,
     tools=[get_customer_info],
     output_key="customer_result",
@@ -85,7 +97,7 @@ customer_info_agent = LlmAgent(
 # Step 2-C: 感情・リスク分析エージェント
 risk_analysis_agent = LlmAgent(
     name="risk_analysis_agent",
-    model=MODEL_NAME,
+    model=gemini_model,
     instruction=RISK_INSTRUCTION,
     output_key="risk_result",
     description="顧客の感情トーン（怒り・焦り等）や解約・炎上リスクをスコアリングするエージェント",
@@ -94,7 +106,7 @@ risk_analysis_agent = LlmAgent(
 # 分岐ルート: クイック返信エージェント（簡易な定型質問・挨拶用）
 quick_response_agent = LlmAgent(
     name="quick_response_agent",
-    model=MODEL_NAME,
+    model=gemini_model,
     instruction=QUICK_RESPONSE_INSTRUCTION,
     output_key="draft_result",
     description="詳細な調査が不要な簡易問い合わせに対して迅速な一次返信ドラフトを作成するエージェント",
@@ -103,7 +115,7 @@ quick_response_agent = LlmAgent(
 # Step 3: 回答ドラフト作成エージェント (Fan-In 後の集約)
 draft_creation_agent = LlmAgent(
     name="draft_creation_agent",
-    model=MODEL_NAME,
+    model=gemini_model,
     instruction=DRAFT_INSTRUCTION,
     output_key="draft_result",
     description="3つの分析結果を集約し、オペレーター向けサマリと顧客向け返信ドラフトを作成するエージェント",
@@ -112,7 +124,7 @@ draft_creation_agent = LlmAgent(
 # Step 4: 品質・ポリシーチェックエージェント
 quality_check_agent = LlmAgent(
     name="quality_check_agent",
-    model=MODEL_NAME,
+    model=gemini_model,
     instruction=QUALITY_INSTRUCTION,
     output_key="final_result",
     description="ビジネスマナー、トーン＆マナー、NG表現をチェックし、確定版の最終回答パッケージを出力するエージェント",

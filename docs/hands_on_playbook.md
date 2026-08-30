@@ -1,10 +1,17 @@
 # 🚀 Cloud Shell でのローカル実行
 
 ## 1. リポジトリの準備
-Cloud Shell ターミナルで本リポジトリに移動します。
+Cloud Shell ターミナルで、本リポジトリをクローンします。
 
 ```bash
-cd ~/adk-hackason
+git clone https://github.com/G-gen-Tech-Blog/adk-hackason.git
+```
+
+
+次に、本リポジトリに移動します。
+
+```bash
+cd ./adk-hackason
 ```
 
 ## 2. Python 仮想環境の作成と有効化
@@ -36,7 +43,8 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-`.env` をエディタで開き、ご自身の Google Cloud プロジェクト ID を設定してください:
+`.env` をエディタ（Cloud Shell または vim 等）で開き、講師が示すハンズオン用 Google Cloud プロジェクト ID を設定してください。なお Cloud Shell では `.` から始まる**隠しファイルはデフォルトでは表示されません**。上部メニューの View > Toggle Hidden Files を選択して、隠しファイルを表示してください。
+
 ```env
 # Gemini Enterprise Agent Platform（旧称 Vertex AI） バックエンドを有効化 (1 または true)
 GOOGLE_GENAI_USE_VERTEXAI=1
@@ -65,6 +73,8 @@ GEMINI_MODEL="gemini-3.7-flash"
 ```bash
 adk web --port 8080 --allow_origins="regex:.*"
 ```
+
+`Enable telemetry?` と同意するプロンプトに対しては Y を入力して Enter を押下してください。
 
 起動後、Cloud Shell の画面右上にある「**ウェブでプレビュー**」アイコン（ブラウザマーク）をクリックし、「**ポート 8080 でプレビュー**」を選択すると、ブラウザ上でエージェントの対話・動作確認画面（Chat UI）が開きます。
 
@@ -121,6 +131,8 @@ flowchart LR
 > **エージェント名の重複防止について**  
 > 本ハンズオンでは全員が**同じ単一の Google Cloud プロジェクト**にデプロイするため、エージェント名（フォルダ名およびリソース名）が他の受講者と重複しないようにする必要があります。
 
+まず、Cloud Shell ターミナル上で `adk web` コマンドで起動したテスト用サーバーがまだ動作している場合は、Ctrl + C で中断してください。
+
 仮想環境（`.venv`）がアクティベートされている状態で、以下のコマンドを実行して受講者専用のエージェントフォルダを作成します。
 
 ```bash
@@ -136,6 +148,12 @@ mv customer_support "${AGENT_NAME}"
 ## Step 2: デプロイコマンドの実行 (`adk deploy agent_engine`)
 
 プロジェクト ID を設定し、作成した自分専用のエージェントをデプロイします。
+デプロイ先リージョンには **`us-central1`** を指定します。
+
+> [!NOTE]
+> **ホスティング環境（Agent Runtime）とモデルエンドポイントの違い**
+> - **Agent Runtime（マネージド実行基盤）**: `us-central1` などの物理リージョンにデプロイされます（Agent Runtime は `global` リージョンに対応していません）。
+> - **Gemini モデル（Gemini 3.7 Flash 等）**: 推論エンドポイントとして `global` を使用します（コード側で `global` エンドポイントが自動指定されるように構成されています）。
 
 ```bash
 # プロジェクト ID を設定（検証環境のプロジェクト ID に書き換える）
@@ -144,7 +162,7 @@ PROJECT_ID="my-project"
 # デプロイの実行（末尾に対象エージェントフォルダ ${AGENT_NAME} を指定）
 adk deploy agent_engine \
   --project="${PROJECT_ID}" \
-  --region="global" \
+  --region="us-central1" \
   --display_name="${AGENT_NAME}" \
   "${AGENT_NAME}"
 ```
@@ -158,9 +176,19 @@ adk deploy agent_engine \
 デプロイが成功すると、ターミナルに以下のようなリソース識別子が出力されます。
 
 ```text
-Deployed to Agent Platform: projects/<YOUR_PROJECT_ID>/locations/global/reasoningEngines/<AGENT_ENGINE_ID>
+Deployed to Agent Platform: projects/<YOUR_PROJECT_ID>/locations/us-central1/reasoningEngines/<AGENT_ENGINE_ID>
 ```
-※ 出力された `<AGENT_ENGINE_ID>`（数字のID）をメモしておきます。Cloud Shell ではマウスで文字列を選択するだけで文字列がクリップボードにコピーされます。
+
+出力された `<AGENT_ENGINE_ID>`（数字のID）をメモしておきます。Cloud Shell ではマウスで文字列を選択するだけで文字列がクリップボードにコピーされます。
+
+さらに、以下のようなメッセージが出力されます。
+
+```
+🎉 View your deployed agent here:
+https://console.cloud.google.com/vertex-ai/agents/agent-engines/locations/us-central1/agent-engines/<AGENT_ENGINE_ID>/playground?project=<PROJECT_NUMBER>>
+```
+
+この URL をクリックして、**プレイグラウンド**（Google Cloud コンソール上の動作確認 UI）に遷移することができます。
 
 ---
 
@@ -168,19 +196,25 @@ Deployed to Agent Platform: projects/<YOUR_PROJECT_ID>/locations/global/reasonin
 
 デプロイ完了後、Google Cloud コンソール上の **Playground（プレイグラウンド）** から直接チャット形式で動作確認を行います。
 
+先程の URL をクリックするか、あるいは以下の方法でプレイグラウンド画面へ移動できます。
+
 1. **Google Cloud コンソールを開く**
    - [Google Cloud コンソール (Agent Runtime)](https://console.cloud.google.com/agent-platform/runtimes) にアクセスします。
 
 2. **デプロイしたエージェントを選択**
    - 一覧画面から、Step 2 でデプロイしたご自身のエージェント（`customer_support_XX`）をクリックして詳細画面を開きます。
+   - ※ 画面上部のリージョン選択が「**us-central1**（または「すべてのリージョン」）」になっていることを確認してください。
 
-3. **プレイグラウンドで動作確認**
-   - 画面上部の**プレイグラウンド**タブを選択します。
-   - チャット入力欄に、以下のテスト問い合わせ文を入力して送信します:
-     ```text
-     株式会社サンプル商事の田中です。本日14時頃より本番環境で貴社APIから429 Too Many Requestsエラーが多発しており業務に影響が出ています。至急の上限緩和と対応手順のご教示をお願いします。
-     ```
-   - ワークフローが実行され、トリアージ ➔ 並列調査（ナレッジ/契約/リスク） ➔ 回答ドラフト作成 ➔ 品質チェック を経て、確定版の返信がチャット画面に出力されることを確認します。
+3. **プレイグラウンド画面へ遷移**
+   - 画面上部の「**プレイグラウンド**」タブを選択します。
+
+プレイグラウンド画面へ遷移できたら、以下のように動作確認してみましょう。
+
+- チャット入力欄に、以下のテスト問い合わせ文を入力して送信します:
+   ```text
+   株式会社サンプル商事の田中です。本日14時頃より本番環境で貴社APIから429 Too Many Requestsエラーが多発しており業務に影響が出ています。至急の上限緩和と対応手順のご教示をお願いします。
+   ```
+- ワークフローが実行され、トリアージ ➔ 並列調査（ナレッジ/契約/リスク） ➔ 回答ドラフト作成 ➔ 品質チェック を経て、確定版の返信がチャット画面に出力されることを確認します。
 
 ## Step 4: 既存エージェントの更新（再デプロイ）
 
@@ -189,7 +223,7 @@ Deployed to Agent Platform: projects/<YOUR_PROJECT_ID>/locations/global/reasonin
 ```bash
 adk deploy agent_engine \
   --project="${PROJECT_ID}" \
-  --region="global" \
+  --region="us-central1" \
   --agent_engine_id="<YOUR_AGENT_ENGINE_ID>" \
   "${AGENT_NAME}"
 ```
@@ -201,6 +235,7 @@ adk deploy agent_engine \
 | エラー・現象 | 主な原因と対策 |
 | :--- | :--- |
 | **`Usage: adk deploy agent_engine [OPTIONS] AGENT` / `Directory does not exist`** | コマンド末尾のエージェント引数に指定したフォルダ（`${AGENT_NAME}`）がローカルに実在するか確認してください（Step 1 の `mv` が実行されているか確認）。 |
+| **デプロイ実行時に処理が固まって進まない (Hang)** | `--region="global"` を指定していないか確認してください。Agent Runtime は `global` リージョンに対応していないため、`--region="us-central1"` を指定してください。 |
 | **`403 Permission Denied`** | ユーザーまたはサービスアカウントに Agent Platform の権限（`roles/aiplatform.user` または `roles/aiplatform.admin`）が付与されているか、API (`aiplatform.googleapis.com`) が有効化されているか確認してください。 |
 
 # 🎯 ハッカソン向け：エージェント適用業務のアイデア集

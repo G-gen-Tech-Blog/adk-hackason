@@ -60,3 +60,15 @@ adk web --port 8080 --allow_origins="regex:.*"
    ```bash
    gcloud services enable aiplatform.googleapis.com
    ```
+
+---
+
+## 4. Agent Runtime デプロイ時のハング / モデル呼び出し 404 エラー
+
+### 現象 1: デプロイコマンド（`adk deploy agent_engine`）を実行すると処理が固まる
+- **原因**: `--region="global"` を指定している。Agent Runtime（Reasoning Engine）は `global` リージョンへのデプロイに対応していません。
+- **解決策**: `--region="us-central1"` などのサポートされている物理リージョンを指定します。
+
+### 現象 2: `us-central1` にデプロイ後、モデル呼び出しで 404 エラーになる
+- **原因**: `adk deploy agent_engine --region=us-central1` でデプロイすると、コンテナ環境変数に `GOOGLE_CLOUD_LOCATION=us-central1` が自動設定され、`gemini-3.7-flash` 等の global エンドポイント対応モデルが `us-central1` を参照してしまう。
+- **解決策**: `agent.py` 内で `Gemini(model=MODEL_NAME, client_kwargs={"location": "global"})` を使用し、モデル呼び出しエンドポイントを明示的に `global` に指定します。
