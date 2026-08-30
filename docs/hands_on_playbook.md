@@ -167,6 +167,8 @@ adk deploy agent_engine \
   "${AGENT_NAME}"
 ```
 
+エージェント名を変えたい時は、シェル変数 AGENT_NAME を変更し、ソースコードを格納しているディレクトリ名も変更することで変更できます。
+
 > [!TIP]
 > **デプロイ処理の流れ**
 > 1. エージェント定義（`${AGENT_NAME}` パッケージ）と依存関係の静的解析・検証
@@ -235,6 +237,7 @@ adk deploy agent_engine \
 | エラー・現象 | 主な原因と対策 |
 | :--- | :--- |
 | **`Usage: adk deploy agent_engine [OPTIONS] AGENT` / `Directory does not exist`** | コマンド末尾のエージェント引数に指定したフォルダ（`${AGENT_NAME}`）がローカルに実在するか確認してください（Step 1 の `mv` が実行されているか確認）。 |
+| **`Deploy failed: Unexpected response from metadata server: service account info is missing 'email' field.`** | Cloud Shell 上での Google アカウント認証がうまくいっていない可能性があります。`gcloud auth application-default login` コマンドを実行して、再認証してください。 |
 | **デプロイ実行時に処理が固まって進まない (Hang)** | `--region="global"` を指定していないか確認してください。Agent Runtime は `global` リージョンに対応していないため、`--region="us-central1"` を指定してください。 |
 | **`403 Permission Denied`** | ユーザーまたはサービスアカウントに Agent Platform の権限（`roles/aiplatform.user` または `roles/aiplatform.admin`）が付与されているか、API (`aiplatform.googleapis.com`) が有効化されているか確認してください。 |
 
