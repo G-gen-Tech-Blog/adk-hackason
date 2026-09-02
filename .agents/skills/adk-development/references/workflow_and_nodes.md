@@ -22,8 +22,12 @@ ADK 2.0 では、従来の単純な逐次実行や転送（Transfer）モデル�
 `FunctionNode` の中で `ctx.route` に分岐先キーを設定し、`edges` で辞書形式で次のノードを指定します。
 
 ```python
-def decide_route(ctx: Context, node_input: str = "") -> str:
-    if "緊急度: 高" in ctx.state.get("triage_result", ""):
+def decide_route(ctx: Context, node_input: Any = None) -> str:
+    # 構造化出力（Pydantic モデル / 辞書）から型安全に判定
+    triage_data = ctx.state.get("triage_result")
+    urgency = getattr(triage_data, "urgency", None) or (triage_data.get("urgency") if isinstance(triage_data, dict) else "")
+
+    if urgency == "高":
         ctx.route = "deep_check"
     else:
         ctx.route = "quick_reply"
@@ -65,9 +69,10 @@ edges = [
 後続エージェントのプロンプト内では、`{key?}` 構文で安全に参照可能です。
 
 ```python
-# エージェント側
+# エージェント側 (構造化出力を指定)
 triage_agent = LlmAgent(
     name="triage_agent",
+    output_schema=TriageResult,  # Pydantic モデルで出力型を厳密定義
     output_key="triage_result",
     instruction="...",
 )

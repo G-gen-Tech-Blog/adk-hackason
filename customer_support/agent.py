@@ -22,6 +22,7 @@
 """
 
 import os
+from typing import Any
 from dotenv import load_dotenv
 from google.adk.agents import LlmAgent
 from google.adk.agents.context import Context
@@ -36,6 +37,7 @@ from .prompts import (
     QUICK_RESPONSE_INSTRUCTION,
     RISK_INSTRUCTION,
     TRIAGE_INSTRUCTION,
+    TriageResult,
 )
 from .tools import get_customer_info, search_knowledge_base
 
@@ -65,11 +67,12 @@ gemini_model = Gemini(
 # 1. 各専門エージェントの定義 (LlmAgent)
 # ==============================================================================
 
-# Step 1: トリアージエージェント
+# Step 1: トリアージエージェント (構造化出力: TriageResult)
 triage_agent = LlmAgent(
     name="triage_agent",
     model=gemini_model,
     instruction=TRIAGE_INSTRUCTION,
+    output_schema=TriageResult,
     output_key="triage_result",
     description="顧客からの問い合わせ内容を分析し、カテゴリ分類と緊急度を判定するエージェント",
 )
@@ -135,20 +138,40 @@ quality_check_agent = LlmAgent(
 # ==============================================================================
 
 
-def decide_route(ctx: Context, node_input: str = "") -> str:
+def decide_route(ctx: Context, node_input: Any = None) -> str:
     """トリアージ結果に基づいて後続のルート（詳細調査 or クイック返信）を決定します。
 
     - カテゴリが「その他」かつ緊急度が「低」の場合: quick_reply
     - 技術的課題、不具合、契約/請求、または中〜高緊急度の場合: deep_check
     """
-    triage_output = ctx.state.get("triage_result", "") or str(node_input)
+    triage_raw = ctx.state.get("triage_result") or node_input
 
-    # 簡易質問・挨拶・一般的な質問かつ低緊急度の場合はクイック返信へ
-    if (
-        ("カテゴリ: その他" in triage_output or "一般的な質問" in triage_output)
-        and ("緊急度: 低" in triage_output)
-        and ("技術" not in triage_output and "エラー" not in triage_output)
-    ):
+    category = ""
+    urgency = ""
+
+    # 1. Pydantic モデルインスタンスの場合
+    if isinstance(triage_raw, TriageResult):
+        category = triage_raw.category
+        urgency = triage_raw.urgency
+    # 2. 辞書形式の場合
+    elif isinstance(triage_raw, dict):
+        category = triage_raw.get("category", "")
+        urgency = triage_raw.get("urgency", "")
+    # 3. 文字列形式（JSON 文字列 または プレーンテキスト）の場合
+    elif isinstance(triage_raw, str):
+        try:
+            parsed = TriageResult.model_validate_json(triage_raw)
+            category = parsed.category
+            urgency = parsed.urgency
+        except Exception:
+            # フォールバック（プレーンテキスト形式の解析）
+            if "カテゴリ: その他" in triage_raw or "その他" in triage_raw:
+                category = "その他"
+            if "緊急度: 低" in triage_raw or "低" in triage_raw:
+                urgency = "低"
+
+    # カテゴリが「その他」かつ緊急度が「低」の場合はクイック返信へ
+    if category == "その他" and urgency == "低":
         ctx.route = "quick_reply"
     else:
         ctx.route = "deep_check"
@@ -156,7 +179,7 @@ def decide_route(ctx: Context, node_input: str = "") -> str:
     return f"Selected route: {ctx.route}"
 
 
-def pass_through_trigger(ctx: Context, node_input: str = "") -> str:
+def pass_through_trigger(ctx: Context, node_input: Any = None) -> str:
     """Fan-Out（並列実行）用のトリガーノード。入力をそのまま後続エージェントへ中継します。"""
     return str(node_input)
 

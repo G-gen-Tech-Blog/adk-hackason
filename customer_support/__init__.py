@@ -17,11 +17,13 @@ from .agent import (
     triage_agent,
     workflow,
 )
+from .prompts import TriageResult
 
 __all__ = [
     "root_agent",
     "workflow",
     "triage_agent",
+    "TriageResult",
     "route_decision_node",
     "parallel_trigger",
     "knowledge_search_agent",

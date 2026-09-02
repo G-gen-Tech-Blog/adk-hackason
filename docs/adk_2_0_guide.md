@@ -106,12 +106,13 @@ flowchart TD
 ### コード例（`customer_support/agent.py` より抜粋）
 
 ```python
-# customer_support/agent.py: L56-63
-# Step 1: トリアージエージェント
+# customer_support/agent.py
+# Step 1: トリアージエージェント (構造化出力: TriageResult)
 triage_agent = LlmAgent(
     name="triage_agent",
-    model=MODEL_NAME,
+    model=gemini_model,
     instruction=TRIAGE_INSTRUCTION,
+    output_schema=TriageResult,  # ★ Pydantic による構造化出力
     output_key="triage_result",
     description="顧客からの問い合わせ内容を分析し、カテゴリ分類と緊急度を判定するエージェント",
 )
@@ -122,8 +123,9 @@ triage_agent = LlmAgent(
 | 引数名 | 型 | 説明 |
 | :--- | :--- | :--- |
 | `name` | `str` | エージェントの一意な識別名。Web UI やログでこの名前が表示されます。 |
-| `model` | `str` | 使用する LLM モデル名（例: `"gemini-3.7-flash"`）。 |
+| `model` | `Gemini / str` | 使用する LLM モデルインスタンスまたはモデル名（例: `"gemini-3.7-flash"`）。 |
 | `instruction` | `str` | エージェントに対する指示（システムプロンプト）。役割や出力形式を定義します。 |
+| `output_schema`| `Type[BaseModel]` | **【構造化出力】** Pydantic モデル等を指定し、LLM の出力フォーマットを厳密に制約・型定義します。 |
 | `tools` | `list` | エージェントが実行できる Python 関数のリスト（Tool Calling）。省略可。 |
 | `output_key` | `str` | **【重要】** エージェントの生成結果をセッションステート（メモリ）に保存するキー名。 |
 | `description` | `str` | エージェントの簡単な説明（概要）。 |
@@ -228,21 +230,37 @@ LLM ではなく、**Python ロジックによる条件分岐** や **並列処�
 
 ### 1. `FunctionNode`: 条件分岐（Routing）の作成
 
-問い合わせ内容に応じて「詳細調査へ進む」か「簡易返信（クイック）で済ませる」かを判定するノードです。
+問い合わせ内容に応じて「詳細調査へ進む」か「簡易返信（クイック）で済ませる」かを判定するノードです。構造化出力（`TriageResult`）を利用することで、型安全かつ確実に条件分岐を行えます。
 
 ```python
-# customer_support/agent.py: L126-144
-def decide_route(ctx: Context, node_input: str = "") -> str:
+# customer_support/agent.py
+def decide_route(ctx: Context, node_input: Any = None) -> str:
     """トリアージ結果に基づいて後続のルート（詳細調査 or クイック返信）を決定します。"""
-    # セッションステートからトリアージ結果を取得
-    triage_output = ctx.state.get("triage_result", "") or str(node_input)
+    triage_raw = ctx.state.get("triage_result") or node_input
 
-    # 簡易質問・挨拶・一般的な質問かつ低緊急度の場合はクイック返信へ
-    if (
-        ("カテゴリ: その他" in triage_output or "一般的な質問" in triage_output)
-        and ("緊急度: 低" in triage_output)
-        and ("技術" not in triage_output and "エラー" not in triage_output)
-    ):
+    category = ""
+    urgency = ""
+
+    # Pydantic モデル、辞書、または JSON 文字列から安全にフィールドを取得
+    if isinstance(triage_raw, TriageResult):
+        category = triage_raw.category
+        urgency = triage_raw.urgency
+    elif isinstance(triage_raw, dict):
+        category = triage_raw.get("category", "")
+        urgency = triage_raw.get("urgency", "")
+    elif isinstance(triage_raw, str):
+        try:
+            parsed = TriageResult.model_validate_json(triage_raw)
+            category = parsed.category
+            urgency = parsed.urgency
+        except Exception:
+            if "カテゴリ: その他" in triage_raw or "その他" in triage_raw:
+                category = "その他"
+            if "緊急度: 低" in triage_raw or "低" in triage_raw:
+                urgency = "低"
+
+    # カテゴリが「その他」かつ緊急度が「低」の場合はクイック返信へ
+    if category == "その他" and urgency == "低":
         ctx.route = "quick_reply"   # ← 分岐先のキー名をセット！
     else:
         ctx.route = "deep_check"    # ← 分岐先のキー名をセット！
@@ -264,8 +282,8 @@ route_decision_node = FunctionNode(
 複数のエージェントを同時に動かす（Fan-Out）際の起点となるノードです。
 
 ```python
-# customer_support/agent.py: L147-162
-def pass_through_trigger(ctx: Context, node_input: str = "") -> str:
+# customer_support/agent.py
+def pass_through_trigger(ctx: Context, node_input: Any = None) -> str:
     """Fan-Out（並列実行）用のトリガーノード。入力をそのまま後続エージェントへ中継します。"""
     return str(node_input)
 

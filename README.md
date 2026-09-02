@@ -11,7 +11,7 @@
 
 ```mermaid
 flowchart TD
-    Start(["__START__"]) --> Step1["Step 1: トリアージ (triage_agent)<br/>・カテゴリ分類 & 緊急度判定"]
+    Start(["__START__"]) --> Step1["Step 1: トリアージ (triage_agent)<br/>・カテゴリ分類 & 緊急度判定<br/>・Pydantic 構造化出力 (TriageResult)"]
     Step1 --> RouteNode{"ルート判定<br/>(route_decision_node)"}
 
     %% (A) 条件分岐

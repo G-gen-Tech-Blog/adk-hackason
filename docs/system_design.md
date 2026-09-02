@@ -95,7 +95,7 @@ flowchart TD
 | ノード / エージェント名 | 種別 | 役割・処理内容 | 入出力 / ツール |
 | :--- | :--- | :--- | :--- |
 | **`START`** | システム定数 | ワークフローの開始エントリポイント | ユーザーの問い合わせ文 |
-| **`triage_agent`** | `LlmAgent` | カテゴリ分類・緊急度判定 | 出力: `triage_result` |
+| **`triage_agent`** | `LlmAgent` | カテゴリ分類・緊急度判定（構造化出力） | 出力スキーマ: `TriageResult` (Pydantic)<br/>出力: `triage_result` |
 | **`route_decision_node`** | `FunctionNode` | トリアージ結果から分岐先を決定 (`ctx.route`) | `deep_check` または `quick_reply` |
 | **`parallel_trigger`** | `FunctionNode` | 並列処理（Fan-Out）への入力を中継 | 後続の3エージェントへ分配 |
 | **`knowledge_search_agent`** | `LlmAgent` | 社内FAQ・ナレッジベースの検索 | ツール: `search_knowledge_base`<br/>出力: `knowledge_result` |
@@ -109,6 +109,7 @@ flowchart TD
 ### 4.3 セッションステートとデータ連携設計
 
 ADK のセッションステート（`ctx.state`）を活用し、各エージェントの `output_key` を後続エージェントのプロンプト内にプレースホルダー `{output_key?}` として埋め込みます。
+また、`triage_agent` には Pydantic モデル `TriageResult` による **Structured Outputs（構造化出力）** を適用しており、後続の `route_decision_node` で型安全な属性・キーアクセスによる正確な条件分岐を実現しています。
 
 ```python
 # 例: draft_creation_agent のプロンプト内
