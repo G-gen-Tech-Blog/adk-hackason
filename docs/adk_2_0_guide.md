@@ -18,8 +18,11 @@ Google のエージェント開発フレームワーク **Agent Development Kit 
 7. [ワークフローの組み立て (`Workflow` と `edges`)](#7-ワークフローの組み立て-workflow-と-edges)
 8. [エージェントの公開ルールとディレクトリ設計](#8-エージェントの公開ルールとディレクトリ設計)
 9. [Web UI (`adk web`) での動作確認と観察ポイント](#9-web-ui-adk-web-での動作確認と観察ポイント)
-10. [ハンズオン：自分でカスタマイズしてみよう](#10-ハンズオン自分でカスタマイズしてみよう)
-11. [まとめ & ADK 2.0 クイックチートシート](#11-まとめ--adk-20-クイックチートシート)
+10. [【実践ガイド①】新エージェント作成時のプロンプト設計とファイル構成・書き方](#10-実践ガイド新エージェント作成時のプロンプト設計とファイル構成書き方)
+11. [【実践ガイド②】`LlmAgent` のツール（`tools`）書き換え・自作完全攻略](#11-実践ガイドllmagent-のツールtools書き換え自作完全攻略)
+12. [【即効レシピ】3ステップでできる！ハッカソン頻出カスタマイズ](#12-即効レシピ3ステップでできるハッカソン頻出カスタマイズ)
+13. [ハマりやすい失敗例とトラブルシューティング](#13-ハマりやすい失敗例とトラブルシューティング)
+14. [まとめ & ADK 2.0 クイックチートシート](#14-まとめ--adk-20-クイックチートシート)
 
 ---
 
@@ -395,37 +398,503 @@ adk web --port 8080 --allow_origins="regex:.*"
    - `gather_research`（JoinNode）で集約された後、`draft_creation_agent` が全情報を取り入れた回答を作成
    - `quality_check_agent` が最終チェックを行い、回答が出力される
 
+## 10. 【実践ガイド①】新エージェント作成時のプロンプト設計とファイル構成・書き方
+
+ハッカソンで「営業提案書自動作成」「IT障害対応」「契約書レビュー」「社内ITヘルプデスク」など、**全く新しいテーマのマルチエージェントをゼロから構築する際、どのようにファイルを配置し、どのようにプロンプトを記述・連携させればよいか** を順を追って解説します。
+
 ---
 
-## 10. ハンズオン：自分でカスタマイズしてみよう
+### 1. 推奨されるディレクトリ・ファイル構成
 
-理解を深めるために、コードを少し書き換えてみましょう！
+ADK 2.0 では、プロンプトを `agent.py` 内に直書きするのではなく、**`prompts/` ディレクトリに 1 エージェント 1 ファイルとして分離管理する** のが最も見通しが良く、チーム開発でも競合を防げるベストプラクティスです。
 
-### チャレンジ 1: トリアージの緊急度基準を変更してみる
-`customer_support/prompts/triage.py` を開き、緊急度「高」の条件に「怒りの絵文字や感嘆符が3つ以上ある場合」を追加してみましょう。
-
-### チャレンジ 2: ナレッジベースに新しい記事を追加してみる
-`customer_support/tools/knowledge_tool.py` の `KNOWLEDGE_BASE` リストに、新しい FAQ 記事（例: `KB-008: 請求書の再発行手順`）を追加してみましょう。
-
-### チャレンジ 3: 新しい並列エージェントを追加してみる
-`customer_support/agent.py` に、競合製品との比較や特記事項を調査する `competitor_analysis_agent` を作成し、`edges` の並列部分に追加してみましょう。
-
-```python
-# 新しいエージェントの定義
-competitor_analysis_agent = LlmAgent(
-    name="competitor_analysis_agent",
-    model=MODEL_NAME,
-    instruction="問い合わせ内容に他社名や競合サービスが含まれているか分析してください。",
-    output_key="competitor_result",
-)
-
-# edges への追加（Fan-Out）
-# (parallel_trigger, competitor_analysis_agent, gather_research),
+```text
+my_sales_agent/                # ← あなたの作成するエージェントフォルダ（半角英数字と _ のみ）
+├── __init__.py                # root_agent を外部公開するエントリポイント
+├── agent.py                   # LlmAgent の定義と Workflow のグラフ構築
+├── prompts/                   # ★ プロンプト専用ディレクトリ
+│   ├── __init__.py            # 各プロンプト変数をまとめてインポート・再公開
+│   ├── triage.py              # Step 1: 要件抽出・トリアージ用プロンプト
+│   ├── case_search.py         # Step 2-A: 過去事例検索用プロンプト
+│   ├── customer_check.py      # Step 2-B: 顧客属性・予算分析用プロンプト
+│   ├── draft.py               # Step 3: 提案書ドラフト生成用プロンプト
+│   └── review.py              # Step 4: 最終レビュー・品質チェック用プロンプト
+└── tools/                     # ★ ツール専用ディレクトリ（Python関数）
+    ├── __init__.py
+    ├── case_tool.py
+    └── pricing_tool.py
 ```
 
 ---
 
-## 11. まとめ & ADK 2.0 クイックチートシート
+### 2. プロンプトファイル（`prompts/*.py`）の書き方と基本テンプレート
+
+各プロンプトファイルでは、`XXX_INSTRUCTION` という文字列定数を定義します。  
+ADK 2.0 のマルチエージェントで高品質な出力を得るための **「プロンプト 4 大構成要素」** を押さえて記述しましょう。
+
+```python
+# prompts/triage.py の例
+"""Step 1: 要件抽出・トリアージエージェントのプロンプト"""
+
+TRIAGE_INSTRUCTION = """あなたは【提案書作成支援システム】の「要件抽出・トリアージ専門エージェント」です。
+ユーザーから入力された相談内容を分析し、提案に必要な要件を整理してください。
+
+【1. あなたの役割】
+- ユーザーの目的、課題感、予算感、希望納期などの基本要件を整理する。
+- 提案のカテゴリ（「新規開発」「クラウド移行」「運用保守」「コンサル」等）を判定する。
+
+【2. 抽出項目】
+- 顧客名 / 企業名:
+- 提案カテゴリ:
+- 抱えている主要課題:
+- 制約事項（予算、期間、技術スタック等）:
+- 後続エージェントへの調査指示:
+
+【3. 出力フォーマット】
+以下の形式に厳密に従って出力してください:
+========================================
+[要件整理サマリ]
+- 企業名: <企業名または「不明」>
+- カテゴリ: <カテゴリ名>
+- 課題要約: <2〜3行で要約>
+- 調査方針: <後続の事例検索・分析エージェントで重点的に調べるべき項目>
+========================================
+"""
+```
+
+---
+
+### 3. 前段エージェントの出力を後段エージェントに渡すプロンプトの書き方（データの連動）
+
+マルチエージェントの真骨頂は、「**前段のエージェントが調査・抽出した結果を、後続のエージェントがプロンプト内で受け取って処理する**」点にあります。
+
+後続エージェント（例: ドラフト生成エージェント）のプロンプトでは、**`{前段エージェントのoutput_key名?}`** と書くことで、セッションステートのデータを自動的に埋め込むことができます。
+
+```python
+# prompts/draft.py の例
+"""Step 3: 提案書ドラフト作成エージェントのプロンプト"""
+
+DRAFT_INSTRUCTION = """あなたは【提案書作成支援システム】の「提案書ドラフト作成専門エージェント」です。
+前段の専門エージェント群が収集・分析した以下の調査結果をすべて統合し、顧客に提出できる完成度の高い提案書を作成してください。
+
+【前段エージェントからの入力データ】
+■ 1. 初期要件・トリアージ結果:
+{triage_result?}
+
+■ 2-A. 過去の類似導入事例:
+{case_result?}
+
+■ 2-B. 顧客属性 & 予算・価格試算:
+{pricing_result?}
+
+【作成指示】
+上記のデータを漏れなく反映し、以下の章立てで提案書ドラフトを作成してください:
+1. はじめに（貴社の現状課題に対する認識）
+2. 本提案のコンセプトと提供価値
+3. 具体的なソリューション構成（過去事例 {case_result?} の実績に基づく根拠を明記）
+4. 概算費用とお見積もり内訳（{pricing_result?} の計算結果を反映）
+5. 今後の進め方とネクストアクション
+"""
+```
+
+> [!TIP]
+> **なぜ `{キー名?}` と末尾に `?` を付けるのか？**  
+> `?` を付けておくことで、万が一そのエージェントが分岐等でスキップされてステート内にデータが存在しない場合でも、KeyError エラーにならず安全に「空文字」として展開されます（Optional プレースホルダー構文）。
+
+---
+
+### 4. `prompts/__init__.py` でプロンプトをまとめてエクスポートする
+
+`prompts/` フォルダ内の `__init__.py` に、各ファイルで定義したプロンプト変数をまとめてインポート・公開します。これにより、`agent.py` から 1 行で美しくインポートできるようになります。
+
+```python
+# prompts/__init__.py
+from .triage import TRIAGE_INSTRUCTION
+from .case_search import CASE_SEARCH_INSTRUCTION
+from .customer_check import CUSTOMER_CHECK_INSTRUCTION
+from .draft import DRAFT_INSTRUCTION
+from .review import REVIEW_INSTRUCTION
+
+__all__ = [
+    "TRIAGE_INSTRUCTION",
+    "CASE_SEARCH_INSTRUCTION",
+    "CUSTOMER_CHECK_INSTRUCTION",
+    "DRAFT_INSTRUCTION",
+    "REVIEW_INSTRUCTION",
+]
+```
+
+---
+
+### 5. `agent.py` でプロンプトを `LlmAgent` に組み込む（キー名の紐付け）
+
+最後に、`agent.py` で各エージェントをインスタンス化します。  
+ここで指定する **`output_key` の文字列** が、後続エージェントのプロンプト内で参照する **`{キー名?}`** と完全に一致するように紐付けます。
+
+```python
+# agent.py
+from google.adk.agents import LlmAgent
+from google.adk.models import Gemini
+from google.adk.workflow import Workflow, FunctionNode, JoinNode, START
+
+# 1. プロンプトのインポート
+from .prompts import (
+    TRIAGE_INSTRUCTION,
+    CASE_SEARCH_INSTRUCTION,
+    CUSTOMER_CHECK_INSTRUCTION,
+    DRAFT_INSTRUCTION,
+    REVIEW_INSTRUCTION,
+)
+# 2. ツールのインポート（自作関数）
+from .tools import search_case_studies, calculate_pricing
+
+# モデルの初期化
+gemini_model = Gemini(model="gemini-3.7-flash", client_kwargs={"location": "global"})
+
+# ----------------------------------------------------------------------
+# 各専門エージェントの定義
+# ----------------------------------------------------------------------
+
+# Step 1: 要件抽出エージェント
+triage_agent = LlmAgent(
+    name="triage_agent",
+    model=gemini_model,
+    instruction=TRIAGE_INSTRUCTION,
+    output_key="triage_result",   # ★ このキー名でセッションステートに保存される
+    description="依頼文から要件を抽出・整理するエージェント",
+)
+
+# Step 2-A: 過去事例検索エージェント（ツール使用）
+case_search_agent = LlmAgent(
+    name="case_search_agent",
+    model=gemini_model,
+    instruction=CASE_SEARCH_INSTRUCTION,
+    tools=[search_case_studies],  # 自作の事例検索ツール
+    output_key="case_result",     # ★ 後続の {case_result?} に渡る
+    description="社内DBから類似事例を検索するエージェント",
+)
+
+# Step 2-B: 価格試算エージェント（ツール使用）
+pricing_agent = LlmAgent(
+    name="pricing_agent",
+    model=gemini_model,
+    instruction=CUSTOMER_CHECK_INSTRUCTION,
+    tools=[calculate_pricing],    # 自作の見積もり計算ツール
+    output_key="pricing_result",  # ★ 後続の {pricing_result?} に渡る
+    description="要件に合わせた概算見積もりを計算するエージェント",
+)
+
+# Step 3: ドラフト作成エージェント（Fan-In後の集約エージェント）
+draft_agent = LlmAgent(
+    name="draft_agent",
+    model=gemini_model,
+    instruction=DRAFT_INSTRUCTION, # ★ プロンプト内で {triage_result?}, {case_result?}, {pricing_result?} を参照
+    output_key="draft_result",
+    description="各調査結果を統合して提案書ドラフトを作成するエージェント",
+)
+
+# Step 4: 最終レビューエージェント
+review_agent = LlmAgent(
+    name="review_agent",
+    model=gemini_model,
+    instruction=REVIEW_INSTRUCTION,
+    output_key="final_result",
+    description="提案書のトーン＆マナーや記載漏れを最終チェックするエージェント",
+)
+```
+
+---
+
+### 6. 【テーマ別】ハッカソンで使えるプロンプト設計テンプレート集
+
+ハッカソンでよく選ばれる人気テーマのプロンプト設計・データ受け渡し例です。自分たちのテーマに合わせて自由にカスタマイズしてください。
+
+#### 🏢 テーマ A: 「IT障害インシデント初動対応エージェント」
+- **Step 1: アラートトリアージ (`triage_agent`)**: アラートログから影響サービス、エラー種別（5xx系、DB遅延等）、障害レベル（P1〜P3）を判定 ➔ `output_key="alert_summary"`
+- **Step 2-A: 過去障害ナレッジ検索 (`incident_kb_agent`)**: 過去の類似インシデントと復旧手順書（Runbook）を検索 ➔ `output_key="runbook_result"`
+- **Step 2-B: 影響範囲・ユーザー照会 (`impact_agent`)**: 影響を受けている契約企業数やSLA要件を照会 ➔ `output_key="impact_result"`
+- **Step 3: 初動周知文 & 復旧手順ドラフト (`draft_agent`)**: `{alert_summary?}`, `{runbook_result?}`, `{impact_result?}` を統合して Slack 向け初動報告文を作成
+- **Step 4: レビュー (`review_agent`)**: 重大情報の誤記載や不適切な表現がないかチェック
+
+#### ⚖️ テーマ B: 「契約書・利用規約リーガルレビューエージェント」
+- **Step 1: 契約類型判定 (`contract_triage`)**: 秘密保持契約(NDA)、業務委託、SaaS利用規約などの類型を判定 ➔ `output_key="contract_type"`
+- **Step 2-A: 自社法務基準照会 (`legal_guideline_agent`)**: 自社のリスク許容基準・NG条項リストを照会 ➔ `output_key="guideline_result"`
+- **Step 2-B: リスク条項抽出 (`risk_clause_agent`)**: 損害賠償上限、競業避止、知財帰属などの不利な条項を抽出 ➔ `output_key="risk_clauses"`
+- **Step 3: 修正条項案作成 (`draft_amendment_agent`)**: `{guideline_result?}` と `{risk_clauses?}` に基づき、相手方への修正要求案を作成
+- **Step 4: 弁護士トーンレビュー (`review_agent`)**: 丁寧かつ毅然とした交渉文面になっているか確認
+
+---
+
+## 11. 【実践ガイド②】`LlmAgent` のツール（`tools`）書き換え・自作完全攻略
+
+ADK 2.0 では、通常の Python 関数を定義して `LlmAgent(tools=[関数名])` に渡すだけで、Gemini が状況に応じて自律的にその関数を実行（Tool Calling / Function Calling）します。
+
+### 1. ツールの基本構造と 3 大原則
+
+```mermaid
+flowchart LR
+    User["ユーザー入力"] --> Agent["LlmAgent (Gemini)"]
+    Agent -->|1. 引数を決めて呼出| ToolFunc["Python 関数 (Tool)"]
+    ToolFunc -->|2. 実行結果 (str/dict)| Agent
+    Agent -->|3. 結果を踏まえて回答| Output["最終出力"]
+```
+
+ツール関数を作成・修正する際は、以下の 3 原則を守る必要があります。
+
+1. **型ヒント（Type Annotation）を明記する**: 引数 (`query: str, count: int`) や戻り値 (`-> str`) の型を省略すると、LLM がスキーマを認識できず呼び出しに失敗する可能性があります。
+2. **docstring に「いつ呼ぶか」「引数の意味」を詳しく書く**: LLM は関数の説明文（docstring）だけを読んでツールを使うべきか判断します。
+3. **戻り値はわかりやすいテキスト（または JSON / dict）にする**: 戻り値はそのまま LLM のコンテキスト（推論材料）に入ります。
+
+---
+
+### 書き換え実例 ①：既存ツールのモックデータを自社の業務データに書き換える（Before / After）
+
+#### 🛠️ 対象ファイル: `customer_support/tools/knowledge_tool.py`
+ハッカソンで手軽に独自の業務知識を持たせたい場合、`KNOWLEDGE_BASE` リストを書き換えるのが最短ルートです。
+
+**▼ Before（APIエラーなどのサポートFAQ）**
+```python
+KNOWLEDGE_BASE: List[Dict[str, str]] = [
+    {
+        "id": "KB-001",
+        "category": "技術的課題",
+        "title": "APIレート制限（429 Too Many Requests）の仕様と対処法",
+        "content": "Standardプランは1分あたり60リクエスト、Enterpriseプランは1分あたり300リクエスト...",
+    },
+]
+```
+
+**▼ After（書き換え例：社内経費精算・人事労務ナレッジに変更）**
+```python
+KNOWLEDGE_BASE: List[Dict[str, str]] = [
+    {
+        "id": "HR-001",
+        "category": "経費精算",
+        "title": "リモートワーク手当およびカフェ利用費の精算基準",
+        "content": (
+            "【支給対象】全正社員。月額上限5,000円まで。\n"
+            "【精算手順】経費精算システム（Concur）にて領収書PDFを添付し「リモートワーク補助」を選択して申請してください。\n"
+            "【対象外】アルコール飲料代、業務時間外の利用、コンビニ購入の軽食代は対象外です。"
+        ),
+    },
+    {
+        "id": "HR-002",
+        "category": "休暇・勤怠",
+        "title": "夏季特別休暇の取得ルールと有効期限",
+        "content": (
+            "【付与日数】毎年7月1日に3日間の有給特別休暇が付与されます。\n"
+            "【取得期間】7月1日〜9月30日までの間に分割または連続して取得可能です。"
+        ),
+    },
+]
+```
+
+> **💡 こう変わる！（実行結果の変化）**  
+> 「カフェで仕事した分の経費って落とせますか？」と Web UI で質問すると、エージェントが自動的に `HR-001` の記事を検索し、「月額上限5,000円まで申請可能ですが、アルコールや軽食は対象外です」と正確に案内してくれるようになります。
+
+---
+
+### 書き換え実例 ②：新しい自作ツールを 1 から作成してエージェントに持たせる
+
+例として、プランごとの見積もり金額や割引率を自動計算する **「料金シミュレーションツール」** を新設してみましょう。
+
+#### Step 1: ツール関数を定義する (`customer_support/tools/calc_tool.py` などを新規作成)
+
+```python
+# customer_support/tools/calc_tool.py
+def calculate_quote(plan_name: str, user_count: int, is_annual: bool = True) -> str:
+    """ユーザー数と契約プランに基づいて、月額費用・年間費用およびボリューム割引を計算します。
+
+    Args:
+        plan_name: 契約プラン名（'Standard' または 'Enterprise'）
+        user_count: 利用ユーザー数（例: 50）
+        is_annual: 年間一括払いかどうか（True の場合は15%割引が適用されます）
+
+    Returns:
+        計算結果の見積もりサマリテキスト
+    """
+    # 基本単価の設定
+    unit_price = 1500 if "standard" in plan_name.lower() else 4000
+    subtotal = unit_price * user_count
+
+    # ボリューム割引率の判定
+    discount_rate = 0.0
+    if user_count >= 100:
+        discount_rate = 0.20  # 100名以上で20%OFF
+    elif user_count >= 50:
+        discount_rate = 0.10  # 50名以上で10%OFF
+
+    # 年間払い割引（追加15%OFF）
+    annual_discount = 0.15 if is_annual else 0.0
+    total_discount_rate = discount_rate + annual_discount
+
+    final_monthly_price = int(subtotal * (1.0 - total_discount_rate))
+    total_annual_price = final_monthly_price * 12
+
+    return (
+        f"【お見積もり試算結果】\n"
+        f"- プラン: {plan_name}（単価: ¥{unit_price:,}/ユーザー）\n"
+        f"- ご利用人数: {user_count} 名\n"
+        f"- 適用割引: 合計 {int(total_discount_rate * 100)}% OFF (ボリューム割: {int(discount_rate * 100)}% + 年間割: {int(annual_discount * 100)}%)\n"
+        f"- 月額費用: ¥{final_monthly_price:,}（税抜）\n"
+        f"- 年間総額: ¥{total_annual_price:,}（税抜）"
+    )
+```
+
+#### Step 2: `customer_support/agent.py` でエージェントにツールを登録する
+
+```python
+# customer_support/agent.py
+# 1. 作成したツールをインポート
+from .tools.calc_tool import calculate_quote
+
+# 2. ツールを持ったエージェントを定義
+quote_agent = LlmAgent(
+    name="quote_agent",
+    model=gemini_model,
+    instruction="""あなたは料金見積もり専門エージェントです。
+顧客の問い合わせからプラン名や希望人数を読み取り、必ず `calculate_quote` ツールを実行して正確な金額を試算してください。
+試算結果をわかりやすくフォーマットして出力してください。""",
+    tools=[calculate_quote],   # ← ここに自作関数を渡す！
+    output_key="quote_result",
+)
+```
+
+> **💡 こう変わる！（実行結果の変化）**  
+> LLM は複雑な掛け算や割引率の計算を間違えやすいですが、Python 関数（ツール）側で厳密に計算させることで、**1円の狂いもない正確な見積もり金額**を回答できるようになります。
+
+---
+
+### 書き換え実例 ③：docstring の書き方で LLM の挙動はどう変わるか？（良例 vs 悪例）
+
+Gemini は **docstring を読んで Tool Calling のパラメータを生成** します。書き方次第でツールの精度が劇的に変わります。
+
+| 項目 | ❌ 悪い例（エラーや不発の原因） | ✅ 良い例（確実に正しく呼ばれる） |
+| :--- | :--- | :--- |
+| **型ヒント** | `def search_db(q, cat):` （型がない） | `def search_db(query: str, category: str = "") -> str:` |
+| **関数の説明** | `"""検索します"""` | `"""社内FAQおよびトラブルシューティング記事を検索します。該当記事がない場合は空を返します。"""` |
+| **引数の説明** | なし | `Args:\n    query: 検索キーワード（例: "429 エラー"）\n    category: "技術" または "契約"` |
+| **呼出の誘導** | なし | `docstring または instruction に「〇〇に関する質問の際は必ずこのツールを呼ぶこと」と明記` |
+
+---
+
+## 12. ハッカソン頻出カスタマイズ
+
+### レシピ 1: 新しいツールを作ってエージェントに追加する（所要時間: 3分）
+
+1. **`customer_support/tools/` に関数を書く**
+   - 型ヒントと docstring（Args, Returns）を必ず記載する。
+2. **`customer_support/tools/__init__.py` で公開する**
+   - `from .my_tool import my_function` を追記。
+3. **`customer_support/agent.py` の `LlmAgent(tools=[my_function])` に追加する**
+   - プロンプトにも「必要に応じて `my_function` ツールを使用してください」と一言添える。
+
+---
+
+### レシピ 2: 新しい並列エージェント（Fan-Out）をワークフローに追加する（所要時間: 5分）
+
+例えば「**競合製品との比較・リプレイス提案エージェント**」を並列調査に追加したい場合：
+
+1. **`customer_support/prompts/competitor.py` を作成**
+   ```python
+   COMPETITOR_INSTRUCTION = """あなたは競合製品分析エージェントです。
+   問い合わせ文に他社製品（A社、B社など）の名前があれば、自社製品の強みと差別化ポイントを提示してください。"""
+   ```
+2. **`customer_support/agent.py` でエージェントを定義**
+   ```python
+   competitor_agent = LlmAgent(
+       name="competitor_agent",
+       model=gemini_model,
+       instruction=COMPETITOR_INSTRUCTION,
+       output_key="competitor_result",
+   )
+   ```
+3. **`Workflow.edges` の並列ブランチに追加**
+   ```python
+   edges = [
+       # ...
+       # 既存の並列エージェントに並べて 1 行追加するだけ！
+       (parallel_trigger, competitor_agent, gather_research),
+       # ...
+   ]
+   ```
+4. **後続の `DRAFT_INSTRUCTION` にプレースホルダー `{competitor_result?}` を追加**
+
+---
+
+### レシピ 3: ワークフロー全体を「別テーマ」に作り変える雛形
+
+カスタマーサポート以外のテーマ（営業支援・コードレビュー・社内ヘルプデスク等）に作り変える際の基本マッピングです。
+
+```mermaid
+flowchart TD
+    Step1["Step 1: 入力トリアージ / 要件抽出エージェント"] --> Route{"条件分岐 (FunctionNode)"}
+    Route -- "詳細対応" --> Parallel["並列トリガー (FunctionNode)"]
+    Route -- "簡易対応" --> Quick["簡易処理エージェント"]
+
+    subgraph FanOut ["並列調査・分析 (Fan-Out)"]
+        A["専門エージェント A<br/>（例: 社内DB / 仕様検索ツール）"]
+        B["専門エージェント B<br/>（例: 顧客属性 / 権限チェックツール）"]
+        C["専門エージェント C<br/>（例: リスク / コスト計算ツール）"]
+    end
+
+    Parallel --> A
+    Parallel --> B
+    Parallel --> C
+
+    A --> Join["同期・集約 (JoinNode)"]
+    B --> Join
+    C --> Join
+
+    Join --> Draft["Step 3: 統合ドラフト生成エージェント"]
+    Draft --> FinalCheck["Step 4: 品質・レギュレーション審査エージェント"]
+    Quick --> FinalCheck
+```
+
+---
+
+## 13. ハマりやすい失敗例とトラブルシューティング
+
+ハッカソン中に受講者が遭遇しやすいトラブルと、その解決策です。
+
+### 1. ツールがまったく呼び出されない
+- **原因 1**: 関数の docstring や引数の説明が書かれておらず、LLM が何をするツールか理解できていない。
+  - **対策**: docstring に「何を検索するツールか」「引数にどんな文字列を入れるべきか」を具体例付きで書く。
+- **原因 2**: プロンプト（`instruction`）でツールの利用が指示されていない。
+  - **対策**: プロンプト内に「自前で推測せず、必ず `search_knowledge_base` ツールを呼び出して調査してください」と明記する。
+
+### 2. 前段エージェントの結果が後続プロンプトに反映されない（空になる）
+- **原因**: エージェント定義時の `output_key` と、プロンプト内のプレースホルダー `{...}` の名前が一致していない（タイポ）。
+  - **確認例**:
+    ```python
+    # agent.py
+    triage_agent = LlmAgent(output_key="triage_result", ...)
+
+    # prompts/draft.py
+    # ❌ 間違い（スペルミス）: {triage_output?}
+    # ✅ 正しい: {triage_result?}
+    ```
+
+### 3. ツール関数内でエラーが発生してエージェント全体がクラッシュする
+- **原因**: 辞書のキーが存在しない（KeyError）や型変換エラーなど。
+- **対策**: ツール関数内全体を `try ... except` で囲み、エラー時も例外を投げずにエラーメッセージ文字列を返すようにします。
+  ```python
+  def safe_tool_func(query: str) -> str:
+      """安全なツール実装例"""
+      try:
+          # 処理
+          return result_text
+      except Exception as e:
+          return f"ツール実行中にエラーが発生しました（詳細: {str(e)}）。代替手順を案内してください。"
+  ```
+
+### 4. プロンプト内に `{}` （波括弧）を書いたらフォーマットエラーになる
+- **原因**: ADK はプロンプト内の `{キー名?}` をステート変数として解釈します。プロンプト内で通常の JSON 例やコード例として `{}` を書きたい場合、意図しない変数展開が試みられることがあります。
+- **対策**: 通常の波括弧をプロンプト内で記述する場合は、二重中括弧 `{{` および `}}` でエスケープしてください。
+
+---
+
+## 14. まとめ & ADK 2.0 クイックチートシート
 
 | クラス / 関数 | インポート元 | 主な用途 |
 | :--- | :--- | :--- |
@@ -439,3 +908,4 @@ competitor_analysis_agent = LlmAgent(
 
 ADK 2.0 のグラフベース設計を活用することで、複雑なビジネスロジックを持った AI エージェントシステムを、保守性が高く拡張しやすい形で構築できます。  
 ぜひ `customer_support/agent.py` をベースに、独自のマルチエージェントを開発してみてください！
+
