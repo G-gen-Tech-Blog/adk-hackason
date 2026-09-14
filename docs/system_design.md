@@ -20,7 +20,7 @@
 | :--- | :--- | :--- |
 | **開発言語** | Python 3.10+ (推奨: Python 3.12) | 型ヒントおよび非同期処理に対応 |
 | **フレームワーク** | Google Agent Development Kit (ADK) 2.0 (v2.6+) | グラフベース `Workflow` オーケストレーション |
-| **基盤モデル (LLM)** | Gemini 3.7 Flash (`gemini-3.7-flash`) | 推奨・標準モデル |
+| **基盤モデル (LLM)** | Gemini 3.7 Flash (`gemini-3.8-flash`) | 推奨・標準モデル |
 | **バックエンド連携** | Gemini Enterprise Agent Platform（旧称 Vertex AI） | `GOOGLE_GENAI_USE_VERTEXAI=1` による Google Cloud Project ネイティブ連携 |
 | **開発・実行環境** | Google Cloud Shell / Linux (ローカル環境) | 仮想環境 (`.venv`) および `adk web` 開発用UI |
 | **セッション管理** | ADK Local Session Service (SQLite / SQLite DB) | 会話履歴および各ノードのステートを保持 |

@@ -48,14 +48,13 @@ load_dotenv(override=True)
 if os.getenv("GOOGLE_GENAI_USE_VERTEXAI") is None and os.getenv("GOOGLE_GENAI_USE_ENTERPRISE") is None:
     os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "1"
 
-# 使用する Gemini モデル（デフォルト: gemini-3.7-flash）
-MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
+# 使用する Gemini モデル（デフォルト: gemini-3.8-flash）
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 # モデル呼び出しのエンドポイントロケーション
 # Agent Runtime は us-central1 などの実リージョンにデプロイされますが、
-# gemini-3.7-flash 等のモデル推論は global エンドポイントを指定します。
+# gemini-3.8-flash 等のモデル推論は global エンドポイントを指定します。
 MODEL_LOCATION = os.getenv("GEMINI_LOCATION", "global")
-os.environ["GOOGLE_CLOUD_LOCATION"] = MODEL_LOCATION
 
 # global エンドポイントを明示指定した Gemini モデルインスタンス
 gemini_model = Gemini(

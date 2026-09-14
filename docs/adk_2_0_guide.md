@@ -123,7 +123,7 @@ triage_agent = LlmAgent(
 | 引数名 | 型 | 説明 |
 | :--- | :--- | :--- |
 | `name` | `str` | エージェントの一意な識別名。Web UI やログでこの名前が表示されます。 |
-| `model` | `Gemini / str` | 使用する LLM モデルインスタンスまたはモデル名（例: `"gemini-3.7-flash"`）。 |
+| `model` | `Gemini / str` | 使用する LLM モデルインスタンスまたはモデル名（例: `"gemini-3.8-flash"`）。 |
 | `instruction` | `str` | エージェントに対する指示（システムプロンプト）。役割や出力形式を定義します。 |
 | `output_schema`| `Type[BaseModel]` | **【構造化出力】** Pydantic モデル等を指定し、LLM の出力フォーマットを厳密に制約・型定義します。 |
 | `tools` | `list` | エージェントが実行できる Python 関数のリスト（Tool Calling）。省略可。 |
@@ -567,7 +567,7 @@ from .prompts import (
 from .tools import search_case_studies, calculate_pricing
 
 # モデルの初期化
-gemini_model = Gemini(model="gemini-3.7-flash", client_kwargs={"location": "global"})
+gemini_model = Gemini(model="gemini-3.8-flash", client_kwargs={"location": "global"})
 
 # ----------------------------------------------------------------------
 # 各専門エージェントの定義
