@@ -257,6 +257,10 @@ adk deploy agent_engine \
 | **`errorCode: "RefreshError"`** | Cloud Shell 上の認証セッションが切れている可能性があります。三点リーダーからCloud Shell を再起動 → `gcloud auth application-default login` → `gcloud auth login` をすべて実行してください。 |
 | **`errorCode: "_ResourceExhaustedError"`** | Google 側でリソースが枯渇しています。時間をおいて再実行してください。 |
 
+# Gemini Enterprise との統合
+
+当社提供のスライド資料に基づいて、実施してください。
+
 # クリーンアップ
 
 ハンズオン終了後は、以下の手順で作成したリソースのクリーンアップを行います。エージェント本体を削除する前に、Gemini Enterprise アプリからの紐づけを解除してください。
@@ -278,6 +282,7 @@ adk deploy agent_engine \
     - **Agent Platform** > **デプロイ**
     - または `https://console.cloud.google.com/agent-platform/runtimes` にアクセス
 2. エージェント一覧画面から、自分のデプロイしたエージェントの名前の右端の三点リーダーをクリックし、プルダウンメニューから「削除」を選択します。
-3. テキストボックスに、**漢字**で「削除」と入力し、削除ボタンを押下します。
+3. 「関連するリソースもすべて削除する」にチェックを入れます。
+4. テキストボックスに、**漢字**で「削除」と入力し、削除ボタンを押下します。
     - 日本語コンソールのローカライズの誤りで、「『DELETE』と入力してください」と表記されていますが、漢字で入力する必要があります（将来的に修正される可能性あり）。
     - コンソールの言語設定が英語ならば、DELETE を入力します。
